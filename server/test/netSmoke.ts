@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { emptyInput, type PlayerInput } from '@shared/sim/PlayerInput';
 import { decodeServer, encode, MAX_NAME_LENGTH, PROTOCOL_VERSION, type ServerMessage } from '@shared/net/messages';
 import type { Snapshot } from '@shared/net/Snapshot';
+import type { GameMode } from '@shared/sim/RoundSystem';
 import { NetClient } from '../../client/src/net/NetClient';
 
 const PORT = 8899;
@@ -80,8 +81,8 @@ class TestClient {
     }, 16);
   }
 
-  setMap(mapId: string, randomize = false): void {
-    this.socket.send(encode({ t: 'setMap', mapId, randomize }));
+  setup(mapId: string, randomize = false, mode: GameMode = 'rounds', matchSeconds = 180): void {
+    this.socket.send(encode({ t: 'setup', setup: { mapId, mode, matchSeconds }, randomize }));
   }
 
   stop(): void {
@@ -206,30 +207,46 @@ try {
   // The host picks the arena, and it takes a few seconds so a change of mind is free.
   check(a.latest?.room.mapId === 'mini-arena', 'a room opens on the default map');
   check(a.latest?.room.hostId === a.playerIds[0], 'whoever opened the room is the host');
-  a.setMap('crossfire');
+  a.setup('crossfire');
   await wait(500);
-  check(a.latest?.room.pendingMapId === 'crossfire' && (a.latest?.room.pendingIn ?? 0) > 0, 'picking a map announces it first');
+  check(a.latest?.room.pending?.mapId === 'crossfire' && (a.latest?.room.pendingIn ?? 0) > 0, 'picking a map announces it first');
   check(a.latest?.room.mapId === 'mini-arena', 'and nothing has changed yet');
 
-  // Changing your mind inside the window simply restarts the countdown on the new choice.
-  a.setMap('mini-arena');
+  // Changing your mind inside the window is free: picking what is in play calls the change off.
+  a.setup('mini-arena');
   await wait(400);
-  check(a.latest?.room.pendingMapId === 'mini-arena', 'picking again replaces the pending map');
-  a.setMap('crossfire');
+  check(a.latest?.room.pending === null && a.latest?.room.mapId === 'mini-arena', 'picking the current map again calls the change off');
+  a.setup('crossfire');
   for (let i = 0; i < 40 && a.latest?.room.mapId !== 'crossfire'; i++) await wait(100);
-  check(a.latest?.room.mapId === 'crossfire' && a.latest?.room.pendingMapId === null, 'the arena changes when the countdown runs out');
+  check(a.latest?.room.mapId === 'crossfire' && a.latest?.room.pending === null, 'the arena changes when the countdown runs out');
   check(b.latest?.room.mapId === 'crossfire', 'and everyone else is told about it too');
 
   // Only the host chooses. Anyone else asking is quietly ignored.
-  b.setMap('mini-arena');
+  b.setup('mini-arena');
   await wait(900);
-  check(a.latest?.room.mapId === 'crossfire' && a.latest?.room.pendingMapId === null, 'a player who is not the host cannot change the map');
+  check(a.latest?.room.mapId === 'crossfire' && a.latest?.room.pending === null, 'a player who is not the host cannot change the map');
 
-  a.setMap('crossfire', true);
+  a.setup('crossfire', true);
   await wait(400);
   check(a.latest?.room.randomize === true, 'the host can ask for a random map each match');
-  a.setMap('crossfire', false);
+  a.setup('crossfire', false);
   await wait(300);
+
+  // Timed mode: the host switches the match type the same way, and the server runs the clock.
+  a.setup('crossfire', false, 'timed', 999);
+  await wait(400);
+  check(a.latest?.room.pending === null && a.latest?.room.mode === 'rounds', 'a match length the game does not offer is ignored');
+  a.setup('crossfire', false, 'timed', 300);
+  await wait(400);
+  check(a.latest?.room.pending?.mode === 'timed' && a.latest?.room.mapId === 'crossfire', 'switching to a timed match is announced like a map change');
+  await waitFor(() => a.latest?.round.mode === 'timed' && a.latest?.round.phase === 'fighting', 8000);
+  const clock = a.latest?.round.timer ?? 0;
+  check(a.latest?.room.mode === 'timed' && a.latest?.room.matchSeconds === 300 && clock > 290 && clock <= 300,
+    `a timed match starts with its clock running (${clock.toFixed(1)}s left)`);
+  check(b.latest?.round.kills !== undefined && Object.keys(b.latest.round.kills).length === 2, 'every player has a kill count in the snapshot');
+  a.setup('crossfire', false, 'rounds', 180);
+  await waitFor(() => a.latest?.round.mode === 'rounds', 8000);
+  check(a.latest?.round.mode === 'rounds', 'and the host can switch back to rounds');
 
   // A drop is not the end: the player stays on the floor waiting for its client to return.
   const bPlayer = b.playerIds[0] as number;

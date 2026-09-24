@@ -6,7 +6,11 @@
 import { crossfire } from '@shared/maps/crossfire';
 import { miniArena } from '@shared/maps/miniArena';
 import { emptyInput, type PlayerInput } from '@shared/sim/PlayerInput';
-import { Simulation } from '@shared/sim/Simulation';
+import { listMaps } from '@shared/maps/MapRegistry';
+import { RAPIER } from '@shared/sim/PhysicsWorld';
+import { SPAWN_JITTER, Simulation } from '@shared/sim/Simulation';
+import { EventQueue } from '@shared/sim/events';
+import { KILL_CREDIT_WINDOW, ScoreSystem } from '@shared/sim/ScoreSystem';
 import { HEALTH, PLAYER, RAGDOLL, THROW } from '@shared/sim/tuning';
 import { PLAYER_DAMAGE } from '@shared/combat/damage';
 import { ATTACKS } from '@shared/combat/attacks';
@@ -540,6 +544,97 @@ check(respawned, 'respawns after falling below the kill plane');
   check(r4.phase === 'countdown' && r4.round === 1 && r4.wins[a] === 0 && r4.alive.length === 2, 'rematch resets the score and starts over');
 }
 
+// ---- Scoring: who gets the kill, and who is winning ------------------------------------------
+{
+  const queue = new EventQueue();
+  const score = new ScoreSystem(queue, () => true);
+  const at = { x: 0, y: 0, z: 0 };
+  queue.push({ type: 'player-damaged', playerId: 2, byPlayerId: 1, damageType: 'punch', hp: 91, maxHp: 100 });
+  queue.push({ type: 'eliminated', playerId: 2, position: at });
+  check(score.killsOf(1) === 1 && score.deathsOf(2) === 1, 'going out soon after a hit is the hitter\'s kill');
+  queue.push({ type: 'knockdown', playerId: 1, byPlayerId: 3 });
+  queue.push({ type: 'eliminated', playerId: 1, position: at });
+  check(score.leader([1, 2, 3]) === 3, 'level on kills, the one with fewer deaths leads');
+  queue.push({ type: 'grab', playerId: 2, target: { kind: 'player', id: 3 } });
+  queue.push({ type: 'eliminated', playerId: 3, position: at });
+  check(score.killsOf(2) === 1, 'carrying someone to their doom counts as a kill');
+  check(score.leader([1, 2, 3]) === null, 'dead level at the top is a draw');
+  queue.push({ type: 'player-damaged', playerId: 1, byPlayerId: 2, damageType: 'kick', hp: 85, maxHp: 100 });
+  score.update(KILL_CREDIT_WINDOW + 1);
+  queue.push({ type: 'eliminated', playerId: 1, position: at });
+  check(score.killsOf(2) === 1 && score.deathsOf(1) === 2, 'a hit from long ago earns nothing; the fall still counts as a death');
+}
+
+// ---- Timed mode: everyone respawns, the clock ends it, most kills wins ----------------------
+{
+  const simT = await Simulation.create(miniArena, {
+    seed: 19,
+    crateSpawn: { firstDelay: 999 },
+    rounds: { countdownSeconds: 1, mode: 'timed', matchSeconds: 40 },
+  });
+  const a = simT.addPlayer();
+  const b = simT.addPlayer();
+  const evts: string[] = [];
+  const inputs: Record<number, Partial<PlayerInput>> = { [a]: {}, [b]: {} };
+  const step = (): void => {
+    simT.setInput(a, { ...emptyInput(), ...inputs[a] });
+    simT.setInput(b, { ...emptyInput(), ...inputs[b] });
+    simT.update(DT);
+    for (const e of simT.drainEvents()) evts.push(e.type);
+  };
+  const body = (id: number) => {
+    const player = simT.player(id);
+    if (!player) throw new Error(`no player ${id}`);
+    return player;
+  };
+  // Respawns land anywhere, so start the walk from open floor in front of the north opening.
+  const walkOff = (who: number): void => {
+    body(who).body.setTranslation({ x: 0.5, y: 0.4, z: -6.5 }, true);
+    for (let i = 0; i < 60 * 8 && simT.playerState(who).posture !== 'eliminated'; i++) {
+      inputs[who] = { moveZ: -1, run: true };
+      step();
+    }
+    inputs[who] = {};
+  };
+  for (let i = 0; i < 70; i++) step();
+  const start = simT.roundState();
+  check(start.mode === 'timed' && start.phase === 'fighting' && start.timer > 38 && start.timer <= 40, `a timed match starts its clock (${start.timer.toFixed(1)}s)`);
+
+  simT.health.applyHit(body(b), 'punch', { x: 0, z: 1 }, 0, a);
+  walkOff(b);
+  step();
+  const afterKill = simT.roundState();
+  check(afterKill.kills[a] === 1 && afterKill.deaths[b] === 1, 'B goes off the edge after A\'s punch: A\'s kill, B\'s death');
+  check(afterKill.phase === 'fighting', 'the match carries on after an elimination');
+
+  for (let i = 0; i < 60 * 4 && simT.playerState(b).posture === 'eliminated'; i++) step();
+  const back = simT.playerState(b);
+  check(back.posture === 'upright' && back.shielded && back.hp === 100, 'B respawns mid-match, on full health and protected');
+  simT.health.applyHit(body(b), 'kick', { x: 0, z: 1 }, 3, a);
+  check(simT.playerState(b).hp === 100, 'a fresh respawn cannot be hurt');
+  for (let i = 0; i < 100; i++) step();
+  check(!simT.playerState(b).shielded, 'the protection wears off by itself');
+  simT.health.shield(b, 1.5);
+  inputs[b] = { punch: true };
+  step();
+  inputs[b] = {};
+  check(!simT.playerState(b).shielded, 'throwing a punch gives the protection up early');
+
+  for (let i = 0; i < 60 * (KILL_CREDIT_WINDOW + 1); i++) step();
+  walkOff(a);
+  step();
+  const selfOut = simT.roundState();
+  check(selfOut.deaths[a] === 1 && (selfOut.kills[b] ?? 0) === 0,
+    `walking off the edge alone is nobody's kill (A deaths ${selfOut.deaths[a]}, B kills ${selfOut.kills[b]})`);
+
+  for (let i = 0; i < 60 * 45 && simT.roundState().phase === 'fighting'; i++) step();
+  const end = simT.roundState();
+  check(end.phase === 'match-over' && end.winnerId === a && evts.includes('match-over'), 'when the clock runs out, most kills wins');
+  simT.rounds.rematch();
+  step();
+  check(simT.roundState().kills[a] === 0 && simT.roundState().deaths[b] === 0, 'a rematch clears the kills');
+}
+
 
 // ---- Jumping: one press, one jump, no climbing the scenery ---------------------------------
 {
@@ -891,6 +986,38 @@ check(respawned, 'respawns after falling below the kill plane');
   const hurt = simM2.playerState(m1);
   check(hurt.hp < before - 20, `and it hurts whoever set it off (${before} -> ${hurt.hp.toFixed(0)})`);
   check(hurt.posture === 'ragdoll', 'and puts them on the floor');
+}
+
+// Every spawn point, anywhere its random nudge can land, has to be clear of the level: a
+// player dealt a spot inside the Crossfire stairs was wedged there and could not move.
+{
+  const capsule = new RAPIER.Capsule(PLAYER.capsuleHalfHeight, PLAYER.capsuleRadius);
+  const noTurn = { x: 0, y: 0, z: 0, w: 1 };
+  for (const map of listMaps()) {
+    const simC = await Simulation.create(map, { seed: 1, crateSpawn: { firstDelay: 999 }, rounds: { autoStart: false } });
+    simC.physics.world.step(); // queries only see colliders once the world has stepped
+    const blocked: string[] = [];
+    map.spawns.forEach((spawn, i) => {
+      for (let dx = -1; dx <= 1; dx += 0.5) for (let dz = -1; dz <= 1; dz += 0.5) {
+        const centre = {
+          x: spawn.x + dx * SPAWN_JITTER,
+          y: spawn.y + PLAYER.capsuleHalfHeight + PLAYER.capsuleRadius + 0.02,
+          z: spawn.z + dz * SPAWN_JITTER,
+        };
+        let hit = false;
+        simC.physics.world.intersectionsWithShape(centre, noTurn, capsule, (collider) => {
+          hit = collider.parent() === null; // the level itself; players and crates have bodies
+          return !hit;
+        });
+        if (hit) {
+          blocked.push(`#${i} (${spawn.x.toFixed(2)}, ${spawn.z.toFixed(2)})`);
+          return;
+        }
+      }
+    });
+    check(blocked.length === 0, `${map.name}: all ${map.spawns.length} spawn points are clear of the level${blocked.length ? ` - blocked: ${blocked.join(' ')}` : ''}`);
+    check(map.spawns.length >= 8, `${map.name}: enough spawn points for a full room`);
+  }
 }
 
 console.log('\nAll simulation checks passed.');

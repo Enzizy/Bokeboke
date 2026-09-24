@@ -49,8 +49,10 @@ export class CharacterView {
   private readonly bodyQuaternion = new THREE.Quaternion();
   private readonly offset = new THREE.Vector3();
   private tumbling = false;
+  private readonly model: THREE.Group;
 
   private constructor(model: THREE.Group, animations: THREE.AnimationClip[]) {
+    this.model = model;
     this.root.add(model);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of animations) this.clips.set(clip.name, clip);
@@ -59,6 +61,14 @@ export class CharacterView {
     this.arms = new ArmPoser(this.bones, this.clips);
     this.handAnchor.name = 'hands';
     this.root.add(this.handAnchor);
+  }
+
+  /**
+   * Blinks the body on and off - how a player shows they cannot be hurt yet. Only the model
+   * blinks, not the root, so the camera keeps following them and their name tag stays put.
+   */
+  setFlicker(on: boolean): void {
+    this.model.visible = !on || Math.floor(performance.now() / 90) % 2 === 0;
   }
 
   static async create(loader: AssetLoader, ref: ModelRef): Promise<CharacterView> {

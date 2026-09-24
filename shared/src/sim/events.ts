@@ -42,9 +42,16 @@ export type SimEvent =
 
 export class EventQueue {
   private events: SimEvent[] = [];
+  private readonly listeners: ((event: SimEvent) => void)[] = [];
+
+  /** Systems that keep count of what others did (scoring) hear every event as it happens. */
+  listen(listener: (event: SimEvent) => void): void {
+    this.listeners.push(listener);
+  }
 
   push(event: SimEvent): void {
     this.events.push(event);
+    for (const listener of this.listeners) listener(event);
   }
 
   /** Returns everything since the last drain and clears the queue. */

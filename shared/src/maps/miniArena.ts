@@ -65,7 +65,7 @@ add('trophy', -4.5, 0, 4.5, 0, 'prop');
  * Spawns: two rings around the plinth. The simulation shuffles which player gets which one
  * each round, so a match never opens the same way twice.
  */
-const spawns: SpawnPoint[] = [...spawnRing(8, 3.6, Math.PI / 8), ...spawnRing(8, EDGE - 2.5)];
+const spawns: SpawnPoint[] = [...spawnRing(8, 4, Math.PI / 8), ...spawnRing(8, EDGE - 2.5, Math.PI / 8)];
 
 // Crates drop onto open floor, never onto the plinth, a column or the props.
 const crateSpawns = [

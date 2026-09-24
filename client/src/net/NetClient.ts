@@ -1,4 +1,4 @@
-import { decodeServer, encode, PROTOCOL_VERSION, type JoinMessage, type ServerMessage } from '@shared/net/messages';
+import { decodeServer, encode, PROTOCOL_VERSION, type JoinMessage, type MatchSetup, type ServerMessage } from '@shared/net/messages';
 import type { Snapshot } from '@shared/net/Snapshot';
 import type { SimEvent } from '@shared/sim/events';
 import type { PlayerInput } from '@shared/sim/PlayerInput';
@@ -138,8 +138,8 @@ export class NetClient {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(encode({ t: 'rematch' }));
   }
 
-  setMap(mapId: string, randomize: boolean): void {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(encode({ t: 'setMap', mapId, randomize }));
+  setup(setup: MatchSetup, randomize: boolean): void {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(encode({ t: 'setup', setup, randomize }));
   }
 
   /** Call once a frame: drives the retry timer. */

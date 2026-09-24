@@ -80,6 +80,11 @@ export const HEALTH = {
    */
   regenDelay: 5,
   regenRate: 12,
+  /**
+   * Seconds a player who has just respawned in a timed match cannot be hurt or grabbed, so
+   * nobody can wait on a spawn point for free kills. Throwing a punch, kick or grab ends it.
+   */
+  spawnShield: 1.5,
 } as const;
 
 export const GRAB = {

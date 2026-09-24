@@ -1,9 +1,10 @@
 import type { PlayerInput } from '../sim/PlayerInput';
+import { isGameMode, MATCH_LENGTHS, type GameMode } from '../sim/RoundSystem';
 import type { SimEvent } from '../sim/events';
 import type { Snapshot } from './Snapshot';
 
 /** Bumped whenever these shapes change; a mismatched client is turned away with a clear reason. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const DEFAULT_PORT = 8787;
 /** One player per connection - everyone plays on their own screen. */
 export const MAX_LOCAL_PLAYERS = 1;
@@ -12,8 +13,9 @@ export const MAX_ROOM_PLAYERS = 8;
 /** Long enough for a name worth having, short enough to fit over a character's head. */
 export const MAX_NAME_LENGTH = 12;
 /**
- * Seconds between calling a map and the arena actually changing. Everyone sees it counting
- * down, and the host can change their mind - picking again simply restarts it.
+ * Seconds between the host changing the match (map, mode or length) and it actually changing.
+ * Everyone sees it counting down, and the host can change their mind - picking again simply
+ * restarts it.
  */
 export const MAP_CHANGE_DELAY = 3;
 
@@ -33,11 +35,32 @@ export interface JoinMessage {
   create?: boolean;
 }
 
-/** The host choosing the next arena. Anyone else asking is ignored. */
-export interface SetMapMessage {
-  t: 'setMap';
+/** What the host decides about a match: where, what kind, and (timed) for how long. */
+export interface MatchSetup {
   mapId: string;
+  mode: GameMode;
+  matchSeconds: number;
+}
+
+/** The host setting up the next match. Anyone else asking is ignored. */
+export interface SetupMessage {
+  t: 'setup';
+  setup: MatchSetup;
+  /** Roll a new map after every match. */
   randomize: boolean;
+}
+
+/** A setup off the wire, checked field by field; null if any of it is not something we offer. */
+export function readSetup(raw: unknown): MatchSetup | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { mapId, mode, matchSeconds } = raw as Record<string, unknown>;
+  if (typeof mapId !== 'string' || !isGameMode(mode)) return null;
+  if (!MATCH_LENGTHS.some((length) => length === matchSeconds)) return null;
+  return { mapId, mode, matchSeconds: matchSeconds as number };
+}
+
+export function sameSetup(a: MatchSetup, b: MatchSetup): boolean {
+  return a.mapId === b.mapId && a.mode === b.mode && a.matchSeconds === b.matchSeconds;
 }
 
 /** One frame of intent per player this connection owns. Sent every client frame. */
@@ -50,7 +73,7 @@ export interface RematchMessage {
   t: 'rematch';
 }
 
-export type ClientMessage = JoinMessage | InputMessage | RematchMessage | SetMapMessage;
+export type ClientMessage = JoinMessage | InputMessage | RematchMessage | SetupMessage;
 
 export interface WelcomeMessage {
   t: 'welcome';
@@ -88,7 +111,7 @@ export function encode(message: ClientMessage | ServerMessage): string {
 export function decodeClient(raw: string): ClientMessage | null {
   const value = parse(raw);
   if (!value) return null;
-  const known = value.t === 'join' || value.t === 'input' || value.t === 'rematch' || value.t === 'setMap';
+  const known = value.t === 'join' || value.t === 'input' || value.t === 'rematch' || value.t === 'setup';
   return known ? (value as ClientMessage) : null;
 }
 

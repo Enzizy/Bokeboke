@@ -13,6 +13,8 @@ import { CharacterView } from '../render/CharacterView';
 import { MapView } from '../render/MapView';
 import { MapPicker } from '../ui/MapPicker';
 import { RoundHud } from '../ui/RoundHud';
+import { Scoreboard } from '../ui/Scoreboard';
+import { describeMode } from '../ui/matchText';
 import { FollowCamera } from './FollowCamera';
 import { EntityViews } from './EntityViews';
 import type { Session } from './Session';
@@ -33,6 +35,9 @@ export class Game {
   readonly debug: DebugOverlay;
   readonly hud: RoundHud;
   private readonly maps: MapPicker;
+  private readonly scoreboard: Scoreboard;
+  /** While true (a menu is open) the keyboard drives nobody: your character stands still. */
+  inputBlocked: () => boolean = () => false;
   /** The map the scenery is currently built from, and whether a rebuild is in flight. */
   private loadedMapId = '';
   private loadingMap = false;
@@ -66,11 +71,13 @@ export class Game {
     this.entities = new EntityViews(this.loader, (x, z) => this.session?.groundAt(x, z) ?? -Infinity);
     this.debug = new DebugOverlay(debugEl);
     this.hud = new RoundHud(hudEl);
-    this.maps = new MapPicker(hudEl, (mapId, randomize) => this.session?.setMap(mapId, randomize));
+    this.maps = new MapPicker(hudEl, (setup, randomize) => this.session?.setup(setup, randomize));
+    this.scoreboard = new Scoreboard(hudEl, () => this.inputBlocked());
     this.parts.scene.add(this.mapView.root);
     this.parts.scene.add(this.entities.root);
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (e) => {
+      if (this.inputBlocked()) return;
       if (e.code === 'KeyR' && this.session?.canRematch()) this.session.rematch();
       if (!this.debug.enabled) return;
       if (e.code === 'KeyF') this.physicsDebug?.toggle();
@@ -243,7 +250,8 @@ export class Game {
     if (this.keys && local !== undefined && !this.bindings.has(local)) this.bindLocalPlayer(this.keys);
 
     this.inputs.clear();
-    for (const [id, keys] of this.bindings) this.inputs.set(id, readPlayerInput(this.keyboard, keys));
+    const blocked = this.inputBlocked();
+    for (const [id, keys] of this.bindings) this.inputs.set(id, blocked ? emptyInput() : readPlayerInput(this.keyboard, keys));
     for (const [id, input] of this.scripted) this.inputs.set(id, input); // debug scenarios, incl. dummies
     session.update(dt, this.inputs);
 
@@ -258,9 +266,22 @@ export class Game {
     void this.syncMap(session);
     this.syncAvatars(session, dt);
     this.entities.sync(session, dt);
-    this.hud.setNotice(session.statusMessage() ?? this.mapNotice(session) ?? this.waitingNotice(session));
+    this.hud.setNotice(session.statusMessage() ?? this.setupNotice(session) ?? this.waitingNotice(session));
     this.hud.update(dt, session.roundState());
     this.maps.update(session.roomInfo(), session.isHost());
+    this.updateScoreboard(session);
+  }
+
+  /** Cheap when Tab is not held: the scoreboard ignores it. */
+  private updateScoreboard(session: Session): void {
+    const mine = session.localPlayerIds;
+    this.scoreboard.update({
+      roomCode: session.roomCode,
+      mapName: getMap(session.mapId).name,
+      matchSeconds: session.roomInfo()?.matchSeconds ?? 0,
+      round: session.roundState(),
+      players: session.playerIds().map((id) => ({ id, name: session.playerName(id), color: colorFor(id), mine: mine.includes(id) })),
+    });
   }
 
   /** Rebuilds the scenery when the room moves to another arena. */
@@ -274,11 +295,15 @@ export class Game {
     }
   }
 
-  /** Everyone gets told what the arena is about to become, host or not. */
-  private mapNotice(session: Session): string | null {
+  /** Everyone gets told what the match is about to become, host or not. */
+  private setupNotice(session: Session): string | null {
     const info = session.roomInfo();
-    if (!info?.pendingMapId) return null;
-    return `${getMap(info.pendingMapId).name}\nin ${Math.max(1, Math.ceil(info.pendingIn))}...`;
+    const next = info?.pending;
+    if (!info || !next) return null;
+    const changes = [];
+    if (next.mapId !== info.mapId) changes.push(getMap(next.mapId).name);
+    if (next.mode !== info.mode || next.matchSeconds !== info.matchSeconds) changes.push(describeMode(next.mode, next.matchSeconds));
+    return `${changes.join(' · ') || 'New match'}\nin ${Math.max(1, Math.ceil(info.pendingIn))}...`;
   }
 
   /**

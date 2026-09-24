@@ -19,6 +19,8 @@ export class HealthSystem {
   private readonly koTimers = new Map<number, number>();
   /** Seconds since each player last took a hit, which is what regeneration waits on. */
   private readonly sinceHit = new Map<number, number>();
+  /** Players fresh off a respawn who cannot be touched yet, and for how much longer. */
+  private readonly shields = new Map<number, number>();
   private readonly events: EventQueue;
   private readonly ragdoll: RagdollSystem;
 
@@ -40,9 +42,24 @@ export class HealthSystem {
     return this.koTimers.has(playerId);
   }
 
+  /** Nothing can hurt this player for a moment - a fresh respawn in a timed match. */
+  shield(playerId: number, seconds: number): void {
+    this.shields.set(playerId, seconds);
+  }
+
+  isShielded(playerId: number): boolean {
+    return this.shields.has(playerId);
+  }
+
+  /** Attacking gives up the protection: a shield is for getting your bearings, not for fighting. */
+  dropShield(playerId: number): void {
+    this.shields.delete(playerId);
+  }
+
   reset(playerId: number): void {
     this.hp.set(playerId, HEALTH.max);
     this.koTimers.delete(playerId);
+    this.shields.delete(playerId);
     this.sinceHit.set(playerId, HEALTH.regenDelay);
   }
 
@@ -51,7 +68,7 @@ export class HealthSystem {
    * much it takes off and how hard it rocks them, so one table stays in charge of each.
    */
   applyHit(victim: PlayerPhysics, type: DamageType, direction: { x: number; z: number }, impulse: number, byPlayerId: number | null): void {
-    if (victim.posture === 'eliminated') return;
+    if (victim.posture === 'eliminated' || this.isShielded(victim.id)) return;
     if (this.isKnockedOut(victim.id)) {
       this.ragdoll.hit(victim, direction, impulse, KNOCKDOWN_POWER[type], byPlayerId); // already out; just kick them along
       return;
@@ -76,6 +93,11 @@ export class HealthSystem {
    */
   update(player: PlayerPhysics, dt: number): void {
     this.regenerate(player, dt);
+    const shield = this.shields.get(player.id);
+    if (shield !== undefined) {
+      if (shield - dt > 0) this.shields.set(player.id, shield - dt);
+      else this.shields.delete(player.id);
+    }
     const left = this.koTimers.get(player.id);
     if (left === undefined) return;
     if (left - dt > 0) {

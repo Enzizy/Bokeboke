@@ -1,5 +1,7 @@
 import type { RoundState } from '@shared/sim/RoundSystem';
 import type { SimEvent } from '@shared/sim/events';
+import { formatClock } from './matchText';
+import { escapeHtml } from './Scoreboard';
 
 export interface HudPlayer {
   id: number;
@@ -10,8 +12,9 @@ export interface HudPlayer {
 const FLASH_SECONDS = 0.9;
 
 /**
- * Round presentation: score pips along the top, a big centre banner for countdowns and
- * results. Plain DOM on top of the canvas; it only reads round state and events.
+ * Round presentation: score pips along the top (kill counts and a clock in a timed match), a
+ * big centre banner for countdowns and results. Plain DOM on top of the canvas; it only reads
+ * round state and events.
  */
 export class RoundHud {
   private readonly score: HTMLElement;
@@ -69,14 +72,14 @@ export class RoundHud {
       case 'countdown': {
         const n = Math.ceil(state.timer);
         if (n !== this.lastCountdown) this.lastCountdown = n;
-        this.setBanner(`Round ${state.round}\n${n}`, 'countdown');
+        this.setBanner(`${state.mode === 'timed' ? 'Most kills wins' : `Round ${state.round}`}\n${n}`, 'countdown');
         break;
       }
       case 'round-over':
         this.setBanner(state.winnerId === null ? 'Draw!' : `${this.nameOf(state.winnerId)} wins the round!`, 'result');
         break;
       case 'match-over':
-        this.setBanner(`${this.nameOf(state.winnerId)} wins the match!\nPress R for a rematch`, 'result');
+        this.setBanner(`${this.matchResult(state)}\nPress R for a rematch`, 'result');
         break;
       default:
         this.setBanner('', '');
@@ -94,20 +97,33 @@ export class RoundHud {
     this.banner.hidden = text === '';
   }
 
+  private matchResult(state: RoundState): string {
+    if (state.winnerId === null) return state.mode === 'timed' ? "Time's up - it's a draw!" : 'Draw!';
+    if (state.mode !== 'timed') return `${this.nameOf(state.winnerId)} wins the match!`;
+    const kills = state.kills[state.winnerId] ?? 0;
+    return `${this.nameOf(state.winnerId)} wins with ${kills} kill${kills === 1 ? '' : 's'}!`;
+  }
+
   private renderScore(state: RoundState): void {
     if (state.phase === 'waiting') {
       this.score.hidden = true;
       return;
     }
     this.score.hidden = false;
-    const html = this.players
+    const timed = state.mode === 'timed';
+    const players = this.players
       .map((p) => {
+        const name = escapeHtml(p.name);
+        // A timed match has no rounds to win and nobody stays out, so it shows kills instead.
+        if (timed) return `<span class="player" style="--c:${p.color}">${name}<b>${state.kills[p.id] ?? 0}</b></span>`;
         const wins = state.wins[p.id] ?? 0;
         const pips = Array.from({ length: this.roundsToWin }, (_, i) => `<i class="${i < wins ? 'won' : ''}"></i>`).join('');
         const out = state.alive.includes(p.id) ? '' : ' out';
-        return `<span class="player${out}" style="--c:${p.color}">${p.name}${pips}</span>`;
+        return `<span class="player${out}" style="--c:${p.color}">${name}${pips}</span>`;
       })
       .join('<em>vs</em>');
+    const clock = timed && state.phase !== 'countdown' ? `<span class="clock">${formatClock(state.timer)}</span>` : '';
+    const html = clock + players;
     if (this.score.innerHTML !== html) this.score.innerHTML = html;
   }
 

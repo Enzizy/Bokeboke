@@ -39,6 +39,8 @@ export interface PlayerState {
   /** Health, also filled in by the Simulation - the HealthSystem owns the numbers. */
   hp: number;
   maxHp: number;
+  /** Fresh off a respawn and untouchable for a moment; drawn flickering. Also Simulation's. */
+  shielded: boolean;
   /** Body orientation; identity while upright, anything while tumbling. */
   qx: number;
   qy: number;
@@ -321,6 +323,7 @@ export class PlayerPhysics {
       weapon: null,
       hp: 0,
       maxHp: 0,
+      shielded: false,
       qx: q.x,
       qy: q.y,
       qz: q.z,

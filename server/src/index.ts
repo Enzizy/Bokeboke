@@ -50,7 +50,7 @@ wss.on('connection', (socket: WebSocket) => {
     if (!room) return; // everything else needs a seat first
     if (message.t === 'input') room.applyInput(peer, message.inputs);
     else if (message.t === 'rematch') room.rematch(peer);
-    else if (message.t === 'setMap') room.setMap(peer, message.mapId, message.randomize);
+    else if (message.t === 'setup') room.setup(peer, message.setup, message.randomize);
   });
 
   socket.on('close', () => {

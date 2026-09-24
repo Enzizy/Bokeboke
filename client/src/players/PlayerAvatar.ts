@@ -43,6 +43,7 @@ export class PlayerAvatar {
     this.view.setPose(state.x, state.y, state.z, state.yaw, q, tumbling);
     this.view.setVelocity(state.vx, state.vy, state.vz);
     this.view.root.visible = state.posture !== 'eliminated';
+    this.view.setFlicker(state.shielded);
     // The tag rides on the character, so an eliminated player takes their name with them.
     const once = Boolean(state.attack) || tumbling || state.posture === 'recovering';
     this.view.play(chooseAnimation(state), once ? { once: true } : {});

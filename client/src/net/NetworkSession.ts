@@ -7,6 +7,7 @@ import type { PlayerInput } from '@shared/sim/PlayerInput';
 import type { PlayerState } from '@shared/sim/PlayerPhysics';
 import { DEFAULT_ROUND_CONFIG, type RoundState } from '@shared/sim/RoundSystem';
 import type { RoomInfo, Snapshot } from '@shared/net/Snapshot';
+import type { MatchSetup } from '@shared/net/messages';
 import type { MineState } from '@shared/weapons/MineSystem';
 import type { PickupState } from '@shared/weapons/WeaponPickup';
 import type { ProjectileState } from '@shared/weapons/ProjectileSystem';
@@ -14,7 +15,7 @@ import { groundHeight, type Session } from '../app/Session';
 import { NetClient, type Connected } from './NetClient';
 import { SnapshotBuffer } from './SnapshotBuffer';
 
-const EMPTY_ROUND: RoundState = { phase: 'waiting', round: 0, timer: 0, wins: {}, alive: [], winnerId: null };
+const EMPTY_ROUND: RoundState = { mode: 'rounds', phase: 'waiting', round: 0, timer: 0, wins: {}, alive: [], winnerId: null, kills: {}, deaths: {} };
 
 /**
  * Online play: the server owns the world and this only draws it. Input goes out every frame,
@@ -62,8 +63,8 @@ export class NetworkSession implements Session {
     return host !== null && host !== undefined && this.ids.includes(host);
   }
 
-  setMap(mapId: string, randomize: boolean): void {
-    this.client.setMap(mapId, randomize);
+  setup(setup: MatchSetup, randomize: boolean): void {
+    this.client.setup(setup, randomize);
   }
 
   /** Connects, takes a seat, and builds the map's collision for local ground queries. */

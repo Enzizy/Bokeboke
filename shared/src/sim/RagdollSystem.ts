@@ -97,8 +97,11 @@ export class RagdollSystem {
     player.respawn(spawn);
   }
 
-  /** Per player, per fixed step. Returns true if the player was respawned this step. */
-  update(player: PlayerPhysics, dt: number, spawn: SpawnPoint, respawnsAllowed: boolean): boolean {
+  /**
+   * Per player, per fixed step. Returns true if the player was respawned this step. Where to
+   * respawn is asked for only at that moment, so it can depend on where everyone is by then.
+   */
+  update(player: PlayerPhysics, dt: number, spawn: () => SpawnPoint, respawnsAllowed: boolean): boolean {
     const posture = this.posture(player.id);
     posture.timer += dt;
     switch (posture.state) {
@@ -125,7 +128,7 @@ export class RagdollSystem {
           player.posture = 'upright';
           posture.timer = 0;
           player.body.setEnabled(true);
-          player.respawn(spawn);
+          player.respawn(spawn());
           this.events.push({ type: 'respawn', playerId: player.id });
           return true;
         }

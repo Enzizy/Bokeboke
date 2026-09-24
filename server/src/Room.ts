@@ -3,7 +3,10 @@ import { emptyInput, type PlayerInput } from '@shared/sim/PlayerInput';
 import { Simulation } from '@shared/sim/Simulation';
 import { PHYSICS } from '@shared/sim/tuning';
 import { captureSnapshot } from '@shared/net/Snapshot';
-import { encode, MAP_CHANGE_DELAY, MAX_LOCAL_PLAYERS, MAX_ROOM_PLAYERS, sanitizeName, type ServerMessage } from '@shared/net/messages';
+import {
+  encode, MAP_CHANGE_DELAY, MAX_LOCAL_PLAYERS, MAX_ROOM_PLAYERS, readSetup, sameSetup, sanitizeName,
+  type MatchSetup, type ServerMessage,
+} from '@shared/net/messages';
 import type { RoomInfo } from '@shared/net/Snapshot';
 import type { SimEvent } from '@shared/sim/events';
 
@@ -57,8 +60,8 @@ export class Room {
   private mapId: string;
   /** Roll a new map after every match instead of staying on the host's pick. */
   private randomize = false;
-  /** A called-but-not-yet-applied map change; picking again just restarts the clock. */
-  private pending: { mapId: string; secondsLeft: number } | null = null;
+  /** A called-but-not-yet-applied change of setup; picking again just restarts the clock. */
+  private pending: { setup: MatchSetup; secondsLeft: number } | null = null;
   private readonly sim: Simulation;
   private readonly members = new Map<Peer, Member>();
   private readonly vacancies = new Map<string, Vacancy>();
@@ -94,39 +97,51 @@ export class Room {
   }
 
   /**
-   * The host chooses the arena. It does not change under everyone's feet immediately: the
-   * choice is announced and applied a few seconds later, so a change of mind is free and
-   * nobody is teleported mid-punch.
+   * The host sets up the match: arena, mode and length. It does not change under everyone's
+   * feet immediately: the choice is announced and applied a few seconds later, so a change of
+   * mind is free and nobody is teleported mid-punch. Picking what is already in play calls a
+   * pending change off.
    */
-  setMap(peer: Peer, mapId: string, randomize: boolean): void {
+  setup(peer: Peer, raw: unknown, randomize: unknown): void {
     if (this.members.get(peer)?.clientId !== this.hostClientId) return; // not the host: ignored
     this.randomize = randomize === true;
-    if (!isMapId(mapId) || mapId === this.pending?.mapId) return;
-    if (mapId === this.mapId && !this.pending) return; // already there and nothing pending
-    this.pending = { mapId, secondsLeft: MAP_CHANGE_DELAY };
+    const setup = readSetup(raw);
+    if (!setup || !isMapId(setup.mapId)) return;
+    if (this.pending && sameSetup(setup, this.pending.setup)) return; // already on its way
+    this.pending = sameSetup(setup, this.current()) ? null : { setup, secondsLeft: MAP_CHANGE_DELAY };
   }
 
-  /** What the clients need to draw the map picker and the countdown. */
+  private current(): MatchSetup {
+    const { mode, matchSeconds } = this.sim.rounds.config;
+    return { mapId: this.mapId, mode, matchSeconds };
+  }
+
+  /** What the clients need to draw the setup panel and the countdown. */
   private roomInfo(): RoomInfo {
     const host = this.hostClientId === null ? null : [...this.members.values()].find((m) => m.clientId === this.hostClientId);
     return {
-      mapId: this.mapId,
+      ...this.current(),
       randomize: this.randomize,
-      pendingMapId: this.pending?.mapId ?? null,
+      pending: this.pending?.setup ?? null,
       pendingIn: this.pending?.secondsLeft ?? 0,
       hostId: host?.playerIds[0] ?? null,
     };
   }
 
-  /** Counts a called map change down and applies it when it lands. */
-  private advanceMapChange(dt: number): void {
+  /** Counts a called change down and applies it when it lands: a fresh match either way. */
+  private advanceSetupChange(dt: number): void {
     if (!this.pending) return;
     this.pending.secondsLeft -= dt;
     if (this.pending.secondsLeft > 0) return;
-    const { mapId } = this.pending;
+    const { setup } = this.pending;
     this.pending = null;
-    this.mapId = mapId;
-    this.sim.changeMap(getMap(mapId));
+    this.sim.rounds.configure(setup.mode, setup.matchSeconds);
+    if (setup.mapId === this.mapId) {
+      this.sim.rounds.startMatch();
+      return;
+    }
+    this.mapId = setup.mapId;
+    this.sim.changeMap(getMap(setup.mapId));
   }
 
   /** With randomize on, every finished match moves the room somewhere new. */
@@ -134,7 +149,7 @@ export class Room {
     if (!this.randomize) return;
     const options = listMaps().filter((m) => m.id !== this.mapId);
     const next = options[Math.floor(Math.random() * options.length)];
-    if (next) this.pending = { mapId: next.id, secondsLeft: MAP_CHANGE_DELAY };
+    if (next) this.pending = { setup: { ...this.current(), mapId: next.id }, secondsLeft: MAP_CHANGE_DELAY };
   }
 
   get playerCount(): number {
@@ -232,7 +247,7 @@ export class Room {
       for (const id of member.playerIds) this.inputs.set(id, emptyInput()); // gone quiet: stop moving
     }
     this.expireVacancies(dt);
-    this.advanceMapChange(dt);
+    this.advanceSetupChange(dt);
     for (const [id, input] of this.inputs) this.sim.setInput(id, input);
     this.sim.update(dt);
     const events = this.sim.drainEvents();

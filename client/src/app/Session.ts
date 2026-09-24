@@ -7,6 +7,7 @@ import type { Simulation } from '@shared/sim/Simulation';
 import { getMap, isMapId } from '@shared/maps/MapRegistry';
 import { PhysicsWorld, RAPIER } from '@shared/sim/PhysicsWorld';
 import type { RoomInfo } from '@shared/net/Snapshot';
+import type { MatchSetup } from '@shared/net/messages';
 import type { PickupState } from '@shared/weapons/WeaponPickup';
 import type { MineState } from '@shared/weapons/MineSystem';
 import type { ProjectileState } from '@shared/weapons/ProjectileSystem';
@@ -21,12 +22,12 @@ export interface Session {
   readonly localPlayerIds: readonly number[];
   /** The map being played right now. It changes when the room changes arena. */
   readonly mapId: string;
-  /** The room's map settings, or null when nobody can change them (a direct URL join). */
+  /** The room's match settings, or null before the server has said (a direct URL join). */
   roomInfo(): RoomInfo | null;
-  /** True when this client is the one allowed to choose the map. */
+  /** True when this client is the one allowed to set up the match. */
   isHost(): boolean;
-  /** Asks for a map (and whether to keep rolling new ones). Ignored unless you are the host. */
-  setMap(mapId: string, randomize: boolean): void;
+  /** Asks for a map, mode and length (and whether to keep rolling maps). Host only. */
+  setup(setup: MatchSetup, randomize: boolean): void;
   /** Brings anything the session keeps per-map back in line after the room changes arena. */
   syncArena(): Promise<void>;
   /** The room code others need to join this match, or null when it is not on a server. */
@@ -79,17 +80,24 @@ export class LocalSession implements Session {
 
   /** Practice is your own room: you are the host, and there is nobody to announce it to. */
   roomInfo(): RoomInfo {
-    return { mapId: this.mapId, randomize: this.randomize, pendingMapId: null, pendingIn: 0, hostId: this.ids[0] ?? null };
+    const { mode, matchSeconds } = this.local.rounds.config;
+    return { mapId: this.mapId, mode, matchSeconds, randomize: this.randomize, pending: null, pendingIn: 0, hostId: this.ids[0] ?? null };
   }
 
   isHost(): boolean {
     return true;
   }
 
-  setMap(mapId: string, randomize: boolean): void {
+  /** Nobody to warn in practice, so a change applies at once and starts a fresh match. */
+  setup(setup: MatchSetup, randomize: boolean): void {
     this.randomize = randomize;
-    if (!isMapId(mapId) || mapId === this.mapId) return;
-    this.local.changeMap(getMap(mapId));
+    const rounds = this.local.rounds;
+    const newMap = isMapId(setup.mapId) && setup.mapId !== this.mapId;
+    const newMatch = setup.mode !== rounds.config.mode || setup.matchSeconds !== rounds.config.matchSeconds;
+    if (!newMap && !newMatch) return;
+    rounds.configure(setup.mode, setup.matchSeconds);
+    if (newMap) this.local.changeMap(getMap(setup.mapId));
+    else rounds.startMatch();
   }
 
   syncArena(): Promise<void> {

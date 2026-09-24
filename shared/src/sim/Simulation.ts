@@ -22,9 +22,11 @@ import { PlayerPhysics, type PlayerState } from './PlayerPhysics';
 import { Random } from './Random';
 import { RagdollSystem } from './RagdollSystem';
 import { RoundSystem, type RoundConfig, type RoundState } from './RoundSystem';
+import { ScoreSystem } from './ScoreSystem';
+import { HEALTH } from './tuning';
 
 /** How far a player may be nudged off their spawn point, so a round never opens identically. */
-const SPAWN_JITTER = 0.35;
+export const SPAWN_JITTER = 0.35;
 
 export interface SimulationOptions {
   seed?: number;
@@ -52,6 +54,7 @@ export class Simulation {
   readonly throws: ThrowSystem;
   readonly ragdoll: RagdollSystem;
   readonly rounds: RoundSystem;
+  readonly score: ScoreSystem;
   readonly projectiles: ProjectileSystem;
   readonly mines: MineSystem;
   readonly weapons: WeaponActivationSystem;
@@ -74,12 +77,13 @@ export class Simulation {
     this.ragdoll = new RagdollSystem(this.events);
     this.health = new HealthSystem(this.events, this.ragdoll);
     this.combat = new CombatSystem(physics, this.events, this.registry, this.damage, this.players, this.health);
-    this.grab = new GrabSystem(physics, this.events, this.registry, this.players, this.crates);
+    this.grab = new GrabSystem(physics, this.events, this.registry, this.players, this.crates, (id) => !this.health.isShielded(id));
     this.throws = new ThrowSystem(this.grab, this.events, this.players, this.ragdoll);
     this.projectiles = new ProjectileSystem(physics, this.events, this.registry, this.players, this.health, this.damage);
     this.mines = new MineSystem(this.events, this.projectiles);
     this.drops = new ChaosDropSystem(this.pickups, this.mines, this.random);
     this.weapons = new WeaponActivationSystem(this.events, this.projectiles);
+    this.score = new ScoreSystem(this.events, () => this.rounds.scoring());
     this.rounds = new RoundSystem(
       this.events,
       {
@@ -87,6 +91,7 @@ export class Simulation {
         isEliminated: (id) => this.players.get(id)?.posture === 'eliminated',
         resetArena: () => this.resetArena(),
       },
+      this.score,
       options.rounds ?? {},
     );
   }
@@ -121,6 +126,7 @@ export class Simulation {
     this.inputs.delete(id);
     this.spawnSlot.delete(id);
     this.spawnPoint.delete(id);
+    this.score.forget(id);
   }
 
   setInput(id: number, input: PlayerInput): void {
@@ -131,12 +137,14 @@ export class Simulation {
   update(dt: number): void {
     this.physics.advance(dt, (stepDt) => {
       this.rounds.update(stepDt);
+      this.score.update(stepDt);
       // Pickups first, so a weapon collected this step starts activating this same step.
       this.pickups.update(stepDt, this.players.values(), this.arena.map.killY, (id) => this.weapons.canPickUp(id));
       const live = this.rounds.inputsAllowed();
       for (const [id, player] of this.players) {
         const input = live ? this.inputs.get(id) ?? emptyInput() : emptyInput();
-        if (this.ragdoll.update(player, stepDt, this.spawnFor(id), this.rounds.respawnsAllowed())) this.health.reset(id);
+        if (this.ragdoll.update(player, stepDt, () => this.respawnPoint(id), this.rounds.respawnsAllowed())) this.respawned(id);
+        if (input.punch || input.kick || input.grab) this.health.dropShield(id);
         this.health.update(player, stepDt);
         player.applyInput(input, stepDt);
         this.weapons.update(player, input, stepDt);
@@ -168,7 +176,7 @@ export class Simulation {
   playerState(id: number): PlayerState {
     const player = this.players.get(id);
     if (!player) throw new Error(`No player ${id}`);
-    return { ...player.state(), weapon: this.weapons.stateOf(id), hp: this.health.hpOf(id), maxHp: this.health.max };
+    return { ...player.state(), weapon: this.weapons.stateOf(id), hp: this.health.hpOf(id), maxHp: this.health.max, shielded: this.health.isShielded(id) };
   }
 
   /** Every player in the match, in join order. */
@@ -261,6 +269,29 @@ export class Simulation {
     this.spawnSlot.set(id, slot);
     this.spawnPoint.set(id, point);
     return point;
+  }
+
+  /** Back on their feet mid-match: full health, and in a timed match a moment's protection. */
+  private respawned(id: number): void {
+    this.health.reset(id);
+    if (this.rounds.mode === 'timed' && this.rounds.currentPhase === 'fighting') this.health.shield(id, HEALTH.spawnShield);
+  }
+
+  /**
+   * Where to come back in a timed match: one of the spawn points furthest from anyone still
+   * fighting, so a respawn is a fresh start rather than a walk into somebody's fist.
+   */
+  private respawnPoint(id: number): SpawnPoint {
+    if (this.rounds.mode !== 'timed' || this.rounds.currentPhase !== 'fighting') return this.spawnFor(id);
+    const others = [...this.players.values()]
+      .filter((p) => p.id !== id && p.posture !== 'eliminated')
+      .map((p) => p.body.translation());
+    const clearance = this.arena.map.spawns.map((s, slot) => ({
+      slot,
+      room: Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - s.x, o.z - s.z))),
+    }));
+    clearance.sort((a, b) => b.room - a.room);
+    return this.takeSpawn(id, this.random.pick(clearance.slice(0, 3)).slot);
   }
 
   /** A slot nobody has, at random; with more players than spawns, any slot will do. */

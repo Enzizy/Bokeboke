@@ -33,9 +33,19 @@ type SoundListener = (name: SoundName, volume: number) => void;
  */
 class SoundHooks {
   private listener: SoundListener | null = null;
+  private effects = 1;
+  /** What music should play at (master x music), for whenever there is music to play. */
+  musicVolume = 1;
+
+  /** The player's volume settings. Every effect is scaled by master x effects on its way out. */
+  setVolumes(volumes: { master: number; music: number; effects: number }): void {
+    this.effects = volumes.master * volumes.effects;
+    this.musicVolume = volumes.master * volumes.music;
+  }
 
   play(name: SoundName, volume = 1): void {
-    this.listener?.(name, volume);
+    if (this.effects <= 0) return;
+    this.listener?.(name, volume * this.effects);
   }
 
   onPlay(listener: SoundListener | null): void {

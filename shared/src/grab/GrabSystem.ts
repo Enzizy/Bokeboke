@@ -35,6 +35,8 @@ export class GrabSystem {
   private readonly registry: EntityRegistry;
   private readonly players: Map<number, PlayerPhysics>;
   private readonly crates: ChaosCrateSpawner;
+  /** Players who may not be picked up right now (spawn protection). */
+  private readonly grabbable: (playerId: number) => boolean;
   private readonly probe = new RAPIER.Ball(GRAB.radius);
 
   constructor(
@@ -43,7 +45,9 @@ export class GrabSystem {
     registry: EntityRegistry,
     players: Map<number, PlayerPhysics>,
     crates: ChaosCrateSpawner,
+    grabbable: (playerId: number) => boolean = () => true,
   ) {
+    this.grabbable = grabbable;
     this.physics = physics;
     this.events = events;
     this.registry = registry;
@@ -124,7 +128,7 @@ export class GrabSystem {
     for (const { handle } of candidates) {
       const ref = this.registry.lookup(handle);
       if (!ref || ref.kind === 'pickup') continue;
-      if (ref.kind === 'player' && this.isHeld(ref.id)) continue;
+      if (ref.kind === 'player' && (this.isHeld(ref.id) || !this.grabbable(ref.id))) continue;
       // Grabbing someone who is holding you (or anything) makes them let go first.
       if (ref.kind === 'player' && this.players.get(ref.id)?.grabbing) this.release(ref.id, 'release');
       this.holds.set(player.id, { grabberId: player.id, target: ref, time: 0, escape: 0 });

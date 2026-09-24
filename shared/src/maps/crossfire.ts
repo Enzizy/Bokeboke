@@ -55,8 +55,12 @@ add('bricks', 2.5, 0, 6.5, 1, 'prop');
 add('bricks', -2.5, 0, -6.5, 3, 'prop');
 add('trophy', 0, 0.5, 0, 0, 'prop'); // sitting on the middle of the cross, asking to be taken
 
-/** Spawns: one ring out in the quadrants, one closer in, all facing the middle. */
-const spawns: SpawnPoint[] = [...spawnRing(4, 7.5, Math.PI / 4), ...spawnRing(4, 4.2, Math.PI / 4), ...spawnRing(8, 6, 0)];
+/**
+ * Spawns: all in the open quadrants between the arms, facing the middle. Nothing may sit on an
+ * arm or its stairs, or under a column - a player dealt such a spot starts wedged in the level.
+ * The sim test checks every spot, including how far the random nudge can push it.
+ */
+const spawns: SpawnPoint[] = [...spawnRing(4, 7.5, Math.PI / 4), ...spawnRing(4, 4.2, Math.PI / 4), ...spawnRing(8, 5.8, Math.PI / 8)];
 
 // Crates land on the cross itself and out in the quadrants - the high ground is worth holding.
 const crateSpawns = [

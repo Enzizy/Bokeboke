@@ -6,8 +6,10 @@ import { Game, SKINS } from './app/Game';
 import { LocalSession, type Session } from './app/Session';
 import { NetworkSession } from './net/NetworkSession';
 import { characterRef, weaponRef } from './assets/assetPaths';
-import { DEFAULT_BINDINGS } from './input/PlayerBindings';
+import { sounds } from './audio/SoundHooks';
+import { Settings } from './settings/Settings';
 import { LobbyMenu, type LobbyChoice } from './ui/LobbyMenu';
+import { SettingsMenu } from './ui/SettingsMenu';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const debugEl = document.getElementById('debug') as HTMLElement;
@@ -15,6 +17,11 @@ const hudEl = document.getElementById('hud') as HTMLElement;
 const loadingEl = document.getElementById('loading') as HTMLElement;
 const params = new URLSearchParams(location.search);
 const lobby = new LobbyMenu(document.body);
+// Settings come first, so keys and volumes can be sorted out from the lobby before playing.
+const settings = new Settings();
+const settingsMenu = new SettingsMenu(document.body, settings);
+sounds.setVolumes(settings.volume);
+settings.onChange(() => sounds.setVolumes(settings.volume));
 
 /**
  * Practice runs the match in this tab against a sparring dummy; the online modes hand it to a
@@ -64,7 +71,9 @@ async function boot(): Promise<void> {
   // Map, physics, characters and drop weapons download together, so nothing pops in later.
   const weaponRefs = [...Object.values(WEAPONS).map((w) => weaponRef(w.model)), weaponRef('arrow_A')];
   await Promise.all([game.loadMap(map), game.loader.loadAll([...SKINS.map(characterRef), ...weaponRefs])]);
-  game.bindLocalPlayer(DEFAULT_BINDINGS);
+  game.bindLocalPlayer(settings.bindings());
+  settings.onChange(() => game.bindLocalPlayer(settings.bindings()));
+  game.inputBlocked = () => settingsMenu.isOpen;
   lobby.hide();
   loadingEl.remove();
   game.start();
