@@ -1,0 +1,28 @@
+{
+  "name": "wobble-wars",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Wobble Wars - a chaotic 2-8 player low-poly physics brawler",
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=client && node scripts/copy-assets.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:sim": "esbuild shared/test/simSmoke.ts --bundle --platform=node --format=esm --alias:@shared=./shared/src --outfile=shared/test/.out/simSmoke.mjs --log-level=warning && node shared/test/.out/simSmoke.mjs",
+    "dev:server": "npm run start --workspace=server",
+    "test:net": "npm run build --workspace=server && esbuild server/test/netSmoke.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./shared/src --outfile=server/test/.out/netSmoke.mjs --log-level=warning && node server/test/.out/netSmoke.mjs",
+    "build:server": "npm run build --workspace=server",
+    "start": "node server/.out/index.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "esbuild": "^0.28.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

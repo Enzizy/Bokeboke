@@ -1,0 +1,16 @@
+node_modules/
+client/dist/
+server/.out/
+server/test/.out/
+shared/test/.out/
+*.log
+.DS_Store
+Thumbs.db
+
+# The asset packs ship every model three times over. The game only ever loads GLB and glTF;
+# the FBX and OBJ copies would triple the size of the repository for files nothing opens.
+assets/**/FBX format/
+assets/**/OBJ format/
+assets/**/Assets/fbx/
+assets/**/Assets/fbx(unity)/
+assets/**/Assets/obj/

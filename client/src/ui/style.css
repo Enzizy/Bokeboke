@@ -1,0 +1,343 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #8ec9e8;
+  font-family: system-ui, sans-serif;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 700;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+#debug {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 8px 10px;
+  background: rgba(20, 24, 32, 0.75);
+  color: #dfe6ee;
+  font: 12px/1.5 ui-monospace, Consolas, monospace;
+  border-radius: 6px;
+  white-space: pre;
+  pointer-events: none;
+}
+
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #fff;
+  font-weight: 800;
+  text-shadow: 0 3px 0 rgba(60, 30, 10, 0.35);
+}
+
+#score {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 1.1rem;
+}
+
+#score .player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--c);
+}
+
+#score .player.out {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+#score .player i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
+}
+
+#score .player i.won {
+  background: #fff;
+}
+
+#score em {
+  font-style: normal;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+#banner {
+  position: absolute;
+  top: 26%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  white-space: pre-line;
+  font-size: 2.6rem;
+  line-height: 1.2;
+}
+
+#banner[data-kind='countdown'] {
+  font-size: 3.4rem;
+}
+
+#banner[data-kind='flash'] {
+  font-size: 4.4rem;
+  color: #ffe66d;
+}
+
+/* Lobby: the front screen. Chunky and warm, like the arena it opens onto. */
+#lobby {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(#8ec9e8, #cfa67e);
+  padding: 16px;
+}
+
+#lobby[hidden] {
+  display: none;
+}
+
+#lobby .panel {
+  width: min(420px, 100%);
+  padding: 28px 26px 22px;
+  border-radius: 22px;
+  background: rgba(38, 24, 18, 0.88);
+  box-shadow: 0 10px 0 rgba(26, 16, 11, 0.55), 0 18px 40px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  text-align: center;
+}
+
+#lobby h1 {
+  margin: 0 0 6px;
+  font-size: 2.4rem;
+  letter-spacing: 0.5px;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+#lobby .tagline {
+  margin: 0 0 20px;
+  font-size: 0.95rem;
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+#lobby button {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: #e8834a;
+  box-shadow: 0 4px 0 #b25f31;
+  color: #fff;
+  font: 700 1.1rem system-ui, sans-serif;
+  cursor: pointer;
+}
+
+#lobby button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+#lobby button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #b25f31;
+}
+
+#lobby button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#lobby .code-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+#lobby .code-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  font: 700 1.2rem/1 ui-monospace, Consolas, monospace;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+#lobby .code-row button {
+  width: auto;
+  margin: 0;
+  padding: 14px 22px;
+  background: #5aa9e6;
+  box-shadow: 0 4px 0 #3b7bad;
+}
+
+#lobby .code-row button:active:not(:disabled) {
+  box-shadow: 0 1px 0 #3b7bad;
+}
+
+#lobby .status {
+  min-height: 1.3em;
+  margin: 14px 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+#lobby .status[data-kind='error'] {
+  color: #ffb4a2;
+}
+
+#lobby .status[data-kind='busy'] {
+  color: #ffe66d;
+}
+
+#lobby .hint {
+  margin: 16px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+#lobby .name-row {
+  display: block;
+  margin-bottom: 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  /* Dim the label text only. Opacity here would fade the input inside it as well, which made
+     the field look greyed out and disabled. */
+  color: rgba(255, 255, 255, 0.72);
+}
+
+#lobby input.name {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px 14px;
+  font: 700 1.05rem system-ui, sans-serif;
+}
+
+/* Both lobby fields: an opaque, light box that no browser theme or autofill can repaint. */
+#lobby input {
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 14px;
+  background: #fdfbf9;
+  color: #2a1a12;
+  caret-color: #e8834a;
+  color-scheme: light;
+  text-align: center;
+}
+
+#lobby input::placeholder {
+  color: #a1928a;
+  font-style: italic;
+  font-weight: 600;
+  opacity: 1; /* Firefox fades placeholders by default, which makes them illegible here */
+}
+
+#lobby input:focus-visible {
+  outline: 3px solid #ffc08a;
+  outline-offset: 2px;
+}
+
+/* Autofill paints its own background straight over ours; paint it back. */
+#lobby input:-webkit-autofill,
+#lobby input:-webkit-autofill:hover,
+#lobby input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #2a1a12;
+  box-shadow: 0 0 0 100px #fdfbf9 inset;
+}
+
+/* The host's map controls: a corner panel, out of the way of the fight. */
+#maps {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 170px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(38, 24, 18, 0.82);
+  color: #fff;
+  pointer-events: auto;
+}
+
+#maps[hidden] {
+  display: none;
+}
+
+#maps h2 {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+#maps button {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: 600 0.9rem system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+#maps button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+#maps button.on {
+  background: #e8834a;
+  box-shadow: 0 3px 0 #b25f31;
+}
+
+#maps .randomize {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+#maps .randomize input {
+  width: 16px;
+  height: 16px;
+  accent-color: #e8834a;
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@wobble-wars/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Authoritative game server: runs the shared Simulation behind WebSockets",
+  "scripts": {
+    "dev": "node --watch .out/index.mjs",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=../shared/src --outfile=.out/index.mjs --log-level=warning",
+    "start": "npm run build && node .out/index.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "@types/node": "^22.10.0"
+  }
+}

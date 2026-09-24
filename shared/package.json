@@ -1,0 +1,13 @@
+{
+  "name": "@wobble-wars/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Renderer-independent game code shared by client and server: types, constants, map data, simulation",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0"
+  }
+}
